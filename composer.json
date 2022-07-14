@@ -1,5 +1,5 @@
 {
-    "name": "conted-local/codechecker",
+    "name": "conted-local/moodlecheck",
     "description": "Checks style of phpdocs in moodle source file",
     "type": "moodle-local",
     "require": {
