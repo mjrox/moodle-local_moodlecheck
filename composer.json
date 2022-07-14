@@ -1,0 +1,9 @@
+{
+    "name": "conted-local/codechecker",
+    "description": "Checks style of phpdocs in moodle source file",
+    "type": "moodle-local",
+    "require": {
+        "composer/installers": "^2.1"
+    },
+    "license": "http://www.gnu.org/copyleft/gpl.html"
+}
