@@ -32,6 +32,8 @@ defined('MOODLE_INTERNAL') || die;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class local_moodlecheck_file {
+    private const MODIFIERS = [T_ABSTRACT, T_PRIVATE, T_PUBLIC, T_PROTECTED, T_STATIC, T_VAR, T_FINAL, T_CONST];
+
     protected $filepath = null;
     protected $needsvalidation = null;
     protected $errors = null;
@@ -192,10 +194,13 @@ class local_moodlecheck_file {
      *
      * Returns 3 arrays (classes, interfaces and traits) of objects where each element represents an artifact:
      * ->type : token type of the artifact (T_CLASS, T_INTERFACE, T_TRAIT)
+     * ->typestring : type of the artifact as a string ('class', 'interface', 'trait')
      * ->name : name of the artifact
      * ->tagpair : array of two elements: id of token { for the class and id of token } (false if not found)
      * ->phpdocs : phpdocs for this artifact (instance of local_moodlecheck_phpdocs or false if not found)
      * ->boundaries : array with ids of first and last token for this artifact.
+     * ->hasextends : boolean indicating whether this artifact has an `extends` clause
+     * ->hasimplements : boolean indicating whether this artifact has an `implements` clause
      *
      * @return array with 3 elements (classes, interfaces & traits), each being an array.
      */
@@ -234,10 +239,28 @@ class local_moodlecheck_file {
                     }
                     $artifact = new stdClass();
                     $artifact->type = $artifacts[$this->tokens[$tid][0]];
+                    $artifact->typestring = $this->tokens[$tid][1];
+
                     $artifact->tid = $tid;
                     $artifact->name = $this->next_nonspace_token($tid);
                     $artifact->phpdocs = $this->find_preceeding_phpdoc($tid);
                     $artifact->tagpair = $this->find_tag_pair($tid, '{', '}');
+
+                    $artifact->hasextends = false;
+                    $artifact->hasimplements = false;
+
+                    if ($artifact->tagpair) {
+                        // Iterate over the remaining tokens in the class definition (until opening {).
+                        foreach (array_slice($this->tokens, $tid, $artifact->tagpair[0] - $tid) as $token) {
+                            if ($token[0] == T_EXTENDS) {
+                                $artifact->hasextends = true;
+                            }
+                            if ($token[0] == T_IMPLEMENTS) {
+                                $artifact->hasimplements = true;
+                            }
+                        }
+                    }
+
                     $artifact->boundaries = $this->find_object_boundaries($artifact);
                     switch ($artifact->type) {
                         case T_CLASS:
@@ -254,6 +277,17 @@ class local_moodlecheck_file {
             }
         }
         return array(T_CLASS => $this->classes, T_INTERFACE => $this->interfaces, T_TRAIT => $this->traits);
+    }
+
+    /**
+     * Like {@see get_artifacts()}, but returns classes, interfaces and traits in a single flat array.
+     *
+     * @return stdClass[]
+     * @see get_artifacts()
+     */
+    public function get_artifacts_flat(): array {
+        $artifacts = $this->get_artifacts();
+        return array_merge($artifacts[T_CLASS], $artifacts[T_INTERFACE], $artifacts[T_TRAIT]);
     }
 
     /**
@@ -276,7 +310,9 @@ class local_moodlecheck_file {
      * $function->tid : token id of the token 'function'
      * $function->name : name of the function
      * $function->phpdocs : phpdocs for this function (instance of local_moodlecheck_phpdocs or false if not found)
+     * TODO: Delete this because it's not used anymore (2023). See #97
      * $function->class : containing class object (false if this is not a class method)
+     * $function->owner : containing artifact object (class, interface, trait, or false if this is not a method)
      * $function->fullname : name of the function with class name (if applicable)
      * $function->accessmodifiers : tokens like static, public, protected, abstract, etc.
      * $function->tagpair : array of two elements: id of token { for the function and id of token } (false if not found)
@@ -302,8 +338,9 @@ class local_moodlecheck_file {
                     }
                     $function->phpdocs = $this->find_preceeding_phpdoc($tid);
                     $function->class = $this->is_inside_class($tid);
-                    if ($function->class !== false) {
-                        $function->fullname = $function->class->name . '::' . $function->name;
+                    $function->owner = $this->is_inside_artifact($tid);
+                    if ($function->owner !== false) {
+                        $function->fullname = $function->owner->name . '::' . $function->name;
                     }
                     $function->accessmodifiers = $this->find_access_modifiers($tid);
                     if (!in_array(T_ABSTRACT, $function->accessmodifiers)) {
@@ -340,7 +377,7 @@ class local_moodlecheck_file {
                         // and continue returning only the final part of the namespace. Someday we'll
                         // move to use full namespaces here, but not for now (we are doing the same,
                         // in other parts of the code, when processing phpdoc blocks).
-                        if (strpos($type, '\\') !== false) {
+                        if (strpos((string)$type, '\\') !== false) {
                             // Namespaced typehint, potentially sub-namespaced.
                             // We need to strip namespacing as this area just isn't that smart.
                             $type = substr($type, strrpos($type, '\\') + 1);
@@ -382,8 +419,11 @@ class local_moodlecheck_file {
                     $variable->name = $this->tokens[$tid][1];
                     $variable->class = $class;
                     $variable->fullname = $class->name . '::' . $variable->name;
-                    $variable->accessmodifiers = $this->find_access_modifiers($tid);
-                    $variable->phpdocs = $this->find_preceeding_phpdoc($tid);
+
+                    $beforetype = $this->skip_preceding_type($tid);
+                    $variable->accessmodifiers = $this->find_access_modifiers($beforetype);
+                    $variable->phpdocs = $this->find_preceeding_phpdoc($beforetype);
+
                     $variable->boundaries = $this->find_object_boundaries($variable);
                     $this->variables[] = $variable;
                 }
@@ -529,6 +569,22 @@ class local_moodlecheck_file {
     }
 
     /**
+     * Checks if the token with id $tid in inside some artifact (class, interface, or trait).
+     *
+     * @param int $tid
+     * @return stdClass|false containing artifact or false if this is not a member
+     */
+    public function is_inside_artifact(int $tid) {
+        $artifacts = $this->get_artifacts_flat();
+        foreach ($artifacts as $artifact) {
+            if ($artifact->boundaries[0] <= $tid && $artifact->boundaries[1] >= $tid) {
+                return $artifact;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Checks if the token with id $tid in inside some function or class method
      *
      * @param int $tid
@@ -553,7 +609,7 @@ class local_moodlecheck_file {
      */
     public function is_whitespace_token($tid) {
         $this->get_tokens();
-        return ($this->tokens[$tid][0] == T_WHITESPACE);
+        return (isset($this->tokens[$tid][0]) && $this->tokens[$tid][0] == T_WHITESPACE);
     }
 
     /**
@@ -628,8 +684,7 @@ class local_moodlecheck_file {
             if ($this->is_whitespace_token($i)) {
                 // Skip.
                 continue;
-            } else if (in_array($tokens[$i][0],
-                    array(T_ABSTRACT, T_PRIVATE, T_PUBLIC, T_PROTECTED, T_STATIC, T_VAR, T_FINAL, T_CONST))) {
+            } else if (in_array($tokens[$i][0], self::MODIFIERS)) {
                 $modifiers[] = $tokens[$i][0];
             } else {
                 break;
@@ -674,6 +729,37 @@ class local_moodlecheck_file {
             }
         }
         return false;
+    }
+
+    /**
+     * Skips any tokens that _could be_ part of a type of a typed property definition.
+     *
+     * @param int $tid the token before which a type is expected
+     * @return int the token id (`< $tid`) directly before the first token of the type. If there is no type, this will
+     *             be the token directly preceding `$tid`.
+     */
+    private function skip_preceding_type(int $tid): int {
+        for ($i = $tid - 1; $i >= 0; $i--) {
+            if ($this->is_whitespace_token($i)) {
+                continue;
+            }
+
+            $token = $this->tokens[$i];
+
+            if (in_array($token[0], self::MODIFIERS)) {
+                // This looks like the last modifier. Return the token after it.
+                return $i + 1;
+            } else if (in_array($token[1], ['{', '}', ';'])) {
+                // We've gone past the beginning of the statement. This isn't possible in valid PHP, but still...
+                // Return the first token of the statement we were in.
+                return $i + 1;
+            }
+
+            // This is something else. Let's assume it to be part of the property's type and skip it.
+        }
+
+        // We've gone all the way to the start of the file, which shouldn't be possible in valid PHP.
+        return 0;
     }
 
     /**

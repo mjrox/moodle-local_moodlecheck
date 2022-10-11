@@ -75,7 +75,7 @@ class local_moodlecheck_rule {
     }
 
     public function get_error_message($args) {
-        if (strlen($this->errorstring) && get_string_manager()->string_exists($this->errorstring, 'local_moodlecheck')) {
+        if (!empty($this->errorstring) && get_string_manager()->string_exists($this->errorstring, 'local_moodlecheck')) {
             return get_string($this->errorstring, 'local_moodlecheck', $args);
         } else if (get_string_manager()->string_exists('error_'. $this->code, 'local_moodlecheck')) {
             return get_string('error_'. $this->code, 'local_moodlecheck', $args);
@@ -102,7 +102,7 @@ class local_moodlecheck_rule {
         foreach ($reterrors as $args) {
             $ruleerrors[] = array(
                 'line' => $args['line'],
-                'severity' => $this->severity,
+                'severity' => $args["severity"] ?? $this->severity,
                 'message' => $this->get_error_message($args),
                 'source' => $this->code
             );
@@ -176,7 +176,7 @@ class local_moodlecheck_path {
         $path = clean_param(trim($path), PARAM_PATH);
         // If the path is already one existing full path
         // accept it, else assume it's a relative one.
-        if (!file_exists($path) and substr($path, 0, 1) == '/') {
+        if (!file_exists($path) && substr($path, 0, 1) == '/') {
             $path = substr($path, 1);
         }
         $this->path = $path;
@@ -262,7 +262,7 @@ class local_moodlecheck_path {
         if (empty($componentsfile)) {
             return array();
         }
-        if (file_exists($componentsfile) and is_readable($componentsfile)) {
+        if (file_exists($componentsfile) && is_readable($componentsfile)) {
             $fh = fopen($componentsfile, 'r');
             while (($line = fgets($fh, 4096)) !== false) {
                 $split = explode(',', $line);
@@ -270,7 +270,7 @@ class local_moodlecheck_path {
                     // Wrong count of elements in the line.
                     continue;
                 }
-                if (trim($split[0]) != 'plugin' and trim($split[0]) != 'subsystem') {
+                if (trim($split[0]) != 'plugin' && trim($split[0]) != 'subsystem') {
                     // Wrong type.
                     continue;
                 }
@@ -315,7 +315,7 @@ class local_moodlecheck_form extends moodleform {
         $mform->addGroup($group, 'checkboxgroup', '', array('<br>'), false);
         foreach (local_moodlecheck_registry::get_registered_rules() as $code => $rule) {
             $group[] =& $mform->createElement('checkbox', "rule[$code]", ' ', $rule->get_name());
-            $mform->setDefault("rule[$code]", 1);
+            $mform->setDefault("rule[$code]", 0);
             $mform->disabledIf("rule[$code]", 'checkall', 'eq', 'all');
         }
 

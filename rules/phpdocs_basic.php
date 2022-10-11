@@ -105,23 +105,37 @@ function local_moodlecheck_classesdocumented(local_moodlecheck_file $file) {
 }
 
 /**
- * Checks if all functions have phpdocs blocks
+ * Checks if all functions have phpdocs blocks.
+ *
+ * For methods of a class which extends another or implements interfaces, a violation in only a warning, since the
+ * method might be overriding a sufficiently documented method. In all other cases, it is an error.
  *
  * @param local_moodlecheck_file $file
  * @return array of found errors
  */
 function local_moodlecheck_functionsdocumented(local_moodlecheck_file $file) {
-
-    $isphpunitfile = preg_match('#/tests/[^/]+_test\.php$#', $file->get_filepath());
+    $isphpunitfile = preg_match('#/tests/.+_test\.php$#', $file->get_filepath());
     $errors = array();
     foreach ($file->get_functions() as $function) {
         if ($function->phpdocs === false) {
             // Exception is made for plain phpunit test methods MDLSITE-3282, MDLSITE-3856.
-            $istestmethod = (strpos($function->name, 'test_') === 0 or
-                            stripos($function->name, 'setup') === 0 or
+            $istestmethod = (strpos($function->name, 'test_') === 0 ||
+                            stripos($function->name, 'setup') === 0 ||
                             stripos($function->name, 'teardown') === 0);
+
+            $isinsubclass = $function->owner && ($function->owner->hasextends || $function->owner->hasimplements);
+
             if (!($isphpunitfile && $istestmethod)) {
-                $errors[] = array('function' => $function->fullname, 'line' => $file->get_line_number($function->boundaries[0]));
+                $error = [
+                    'function' => $function->fullname,
+                    'line' => $file->get_line_number($function->boundaries[0])
+                ];
+
+                if ($isinsubclass) {
+                    $error["severity"] = "warning";
+                }
+
+                $errors[] = $error;
             }
         }
     }
@@ -224,7 +238,7 @@ function local_moodlecheck_phpdocsnotrecommendedtag(local_moodlecheck_file $file
     foreach ($file->get_all_phpdocs() as $phpdocs) {
         foreach ($phpdocs->get_tags() as $tag) {
             $tag = preg_replace('|^@([^\s]*).*|s', '$1', $tag);
-            if (in_array($tag, local_moodlecheck_phpdocs::$validtags) and
+            if (in_array($tag, local_moodlecheck_phpdocs::$validtags) &&
                     !in_array($tag, local_moodlecheck_phpdocs::$recommendedtags)) {
                 $errors[] = array(
                     'line' => $phpdocs->get_line_number($file, '@' . $tag),
@@ -246,8 +260,8 @@ function local_moodlecheck_phpdocsinvalidpathtag(local_moodlecheck_file $file) {
     foreach ($file->get_all_phpdocs() as $phpdocs) {
         foreach ($phpdocs->get_tags() as $tag) {
             $tag = preg_replace('|^@([^\s]*).*|s', '$1', $tag);
-            if (in_array($tag, local_moodlecheck_phpdocs::$validtags) and
-                    in_array($tag, local_moodlecheck_phpdocs::$recommendedtags) and
+            if (in_array($tag, local_moodlecheck_phpdocs::$validtags) &&
+                    in_array($tag, local_moodlecheck_phpdocs::$recommendedtags) &&
                     isset(local_moodlecheck_phpdocs::$pathrestrictedtags[$tag])) {
                 // Verify file path matches some of the valid paths for the tag.
                 if (!preg_filter(local_moodlecheck_phpdocs::$pathrestrictedtags[$tag], '$0', $file->get_filepath())) {
@@ -416,8 +430,8 @@ function local_moodlecheck_functionarguments(local_moodlecheck_file $file) {
                     // Must be at least type and parameter name.
                     $match = false;
                 } else {
-                    $expectedtype = $function->arguments[$i][0];
-                    $expectedparam = $function->arguments[$i][1];
+                    $expectedtype = (string)$function->arguments[$i][0];
+                    $expectedparam = (string)$function->arguments[$i][1];
                     $documentedtype = $documentedarguments[$i][0];
                     $documentedparam = $documentedarguments[$i][1];
 

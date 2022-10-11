@@ -41,19 +41,25 @@ function local_moodlecheck_packagespecified(local_moodlecheck_file $file) {
     $phpdocs = $file->find_file_phpdocs();
     if ($phpdocs && count($phpdocs->get_tags('package', true))) {
         // Package is specified on file level, it is automatically inherited.
-        return array();
+        return [];
     }
-    foreach ($file->get_classes() as $object) {
-        if (!$object->phpdocs || !count($object->phpdocs->get_tags('package', true))) {
-            $errors[] = array('line' => $file->get_line_number($object->boundaries[0]),
-                    'object' => 'class '. $object->name);
+
+    foreach ($file->get_artifacts_flat() as $artifact) {
+        if (!$artifact->phpdocs || !count($artifact->phpdocs->get_tags('package', true))) {
+            $errors[] = [
+                'line' => $file->get_line_number($artifact->boundaries[0]),
+                'object' => "$artifact->typestring $artifact->name",
+            ];
         }
     }
+
     foreach ($file->get_functions() as $object) {
-        if ($object->class === false) {
+        if ($object->owner === false) {
             if (!$object->phpdocs || !count($object->phpdocs->get_tags('package', true))) {
-                $errors[] = array('line' => $file->get_line_number($object->boundaries[0]),
-                        'object' => 'function '. $object->fullname);
+                $errors[] = [
+                    'line' => $file->get_line_number($object->boundaries[0]),
+                    'object' => 'function ' . $object->fullname,
+                ];
             }
         }
     }
@@ -133,7 +139,7 @@ function local_moodlecheck_package_names(local_moodlecheck_file $file) {
         // Prepare the list of core packages.
         foreach ($allsubsystems as $subsystem => $dir) {
             // Subsytems may come with the valid component name (core_ prefixed) already.
-            if (strpos($subsystem, 'core_') === 0 or $subsystem === 'core') {
+            if (strpos($subsystem, 'core_') === 0 || $subsystem === 'core') {
                 $corepackages[] = $subsystem;
             } else {
                 $corepackages[] = 'core_' . $subsystem;
