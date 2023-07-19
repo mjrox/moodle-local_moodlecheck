@@ -15,17 +15,21 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details.
+ * Fixture file with use statements, none of which should trigger warnings, despite containing "function" and "const".
  *
- * @package    local_moodlecheck
- * @copyright  2012 Marina Glancy
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package     local_moodlecheck
+ * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die;
+use these\dont\actually\need\to\point\to\anything;
+use function ns\fun_1;
+use function ns\fun_2 as alias;
+use const ns\CONST_1;
+use const ns\CONST_2 as ALIAS;
 
-$plugin->version  = 2023071400;
-$plugin->release   = '1.1.6';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->requires = 2018051700;
-$plugin->component = 'local_moodlecheck';
+use {
+    function ns\fun_3,
+    const ns\const_3
+};
+
+use function ns\fun_1?>

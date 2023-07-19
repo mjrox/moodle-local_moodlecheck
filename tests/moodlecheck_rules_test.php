@@ -379,6 +379,18 @@ class moodlecheck_rules_test extends \advanced_testcase {
                 "{$rootpath}/extendsandimplements.php",
                 false,
             ],
+            'return new class (with params) {' => [
+                "{$rootpath}/anonymous_with_params.php",
+                false,
+            ],
+            'return new class (with params) extends parentclass {' => [
+                "{$rootpath}/extends_with_params.php",
+                false,
+            ],
+            'return new class (with params) implements someinterface {' => [
+                "{$rootpath}/implements_with_params.php",
+                false,
+            ],
             '$value = new class {' => [
                 "{$rootpath}/assigned.php",
                 false,
@@ -431,6 +443,30 @@ class moodlecheck_rules_test extends \advanced_testcase {
     }
 
     /**
+     * Verify that method parameters are correctly interpreted no matter the definition style.
+     *
+     * @covers ::local_moodlecheck_functionarguments
+     */
+    public function test_functionsdocumented_method_multiline() {
+        $file = __DIR__ . "/fixtures/phpdoc_method_multiline.php";
+
+        global $PAGE;
+        $output = $PAGE->get_renderer('local_moodlecheck');
+        $path = new local_moodlecheck_path($file, null);
+        $result = $output->display_path($path, 'xml');
+
+        // Convert results to XML Object.
+        $xmlresult = new \DOMDocument();
+        $xmlresult->loadXML($result);
+
+        $xpath = new \DOMXpath($xmlresult);
+        $found = $xpath->query('//file/error[@source="functionarguments"]');
+        // TODO: Change to DOMNodeList::count() when php71 support is gone.
+        $this->assertSame(0, $found->length); // All examples in fixtures are ok.
+    }
+
+
+    /**
      * Verify that top-level methods without docs are errors but methods in subclasses without docs are warnings.
      *
      * @covers ::local_moodlecheck_functionsdocumented
@@ -460,12 +496,36 @@ class moodlecheck_rules_test extends \advanced_testcase {
     }
 
     /**
+     * Verify that "use function" statements are ignored.
+     *
+     * @covers ::local_moodlecheck_functionsdocumented
+     * @covers ::local_moodlecheck_constsdocumented
+     */
+    public function test_functionsdocumented_constsdocumented_ignore_uses() {
+        $file = __DIR__ . "/fixtures/uses.php";
+
+        global $PAGE;
+        $output = $PAGE->get_renderer('local_moodlecheck');
+        $path = new local_moodlecheck_path($file, null);
+        $result = $output->display_path($path, 'xml');
+
+        // Convert results to XML Object.
+        $xmlresult = new \DOMDocument();
+        $xmlresult->loadXML($result);
+
+        $xpath = new \DOMXpath($xmlresult);
+        $found = $xpath->query('//file/error[@source="functionsdocumented" or @source="constsdocumented"]');
+        // TODO: Change to DOMNodeList::count() when php71 support is gone.
+        $this->assertSame(0, $found->length);
+    }
+
+    /**
      * Verify that `variablesdocumented` correctly detects PHPdoc on different kinds of properties.
      *
      * @covers ::local_moodlecheck_variablesdocumented
      * @covers \local_moodlecheck_file::get_variables
      */
-    public function test_variablesdocumented() {
+    public function test_variables_and_constants_documented() {
         $file = __DIR__ . "/fixtures/phpdoc_properties.php";
 
         global $PAGE;
@@ -479,6 +539,8 @@ class moodlecheck_rules_test extends \advanced_testcase {
 
         $xpath = new \DOMXpath($xmlresult);
 
+        // Verify that the undocumented variables are reported.
+
         $found = $xpath->query('//file/error[@source="variablesdocumented"]');
         // TODO: Change to DOMNodeList::count() when php71 support is gone.
         $this->assertSame(4, $found->length);
@@ -488,5 +550,61 @@ class moodlecheck_rules_test extends \advanced_testcase {
         $this->assertStringContainsString('$undocumented2', $found->item(1)->getAttribute("message"));
         $this->assertStringContainsString('$undocumented3', $found->item(2)->getAttribute("message"));
         $this->assertStringContainsString('$undocumented4', $found->item(3)->getAttribute("message"));
+
+        // Verify that the undocumented constants are reported.
+
+        $found = $xpath->query('//file/error[@source="constsdocumented"]');
+        // TODO: Change to DOMNodeList::count() when php71 support is gone.
+        $this->assertSame(2, $found->length);
+
+        // The PHPdocs of the other properties should be detected correctly.
+        $this->assertStringContainsString('UNDOCUMENTED_CONSTANT1', $found->item(0)->getAttribute("message"));
+        $this->assertStringContainsString('UNDOCUMENTED_CONSTANT2', $found->item(1)->getAttribute("message"));
+
+        // Verify that the @const tag is reported as invalid.
+
+        $found = $xpath->query('//file/error[@source="phpdocsinvalidtag"]');
+        // TODO: Change to DOMNodeList::count() when php71 support is gone.
+        $this->assertSame(1, $found->length);
+
+        $this->assertStringContainsString('Invalid phpdocs tag @const used', $found->item(0)->getAttribute("message"));
+    }
+
+    /**
+     * Verify that the text format shown information about the severity of the problem (error vs warning)
+     *
+     * @covers \local_moodlecheck_renderer
+     */
+    public function test_text_format_errors_and_warnings() {
+        $file = __DIR__ . "/fixtures/error_and_warning.php";
+
+        global $PAGE;
+        $output = $PAGE->get_renderer('local_moodlecheck');
+        $path = new local_moodlecheck_path($file, null);
+        $result = $output->display_path($path, 'text');
+
+        $this->assertStringContainsString('tests/fixtures/error_and_warning.php', $result);
+        $this->assertStringContainsString('2: Empty line found after PHP open tag (warning)', $result);
+        $this->assertStringContainsString('11: Class someclass is not documented (error)', $result);
+        $this->assertStringContainsString('12: Function someclass::somefunc is not documented (warning)', $result);
+    }
+
+    /**
+     * Verify that the html format shown information about the severity of the problem (error vs warning)
+     *
+     * @covers \local_moodlecheck_renderer
+     */
+    public function test_html_format_errors_and_warnings() {
+        $file = __DIR__ . "/fixtures/error_and_warning.php";
+
+        global $PAGE;
+        $output = $PAGE->get_renderer('local_moodlecheck');
+        $path = new local_moodlecheck_path($file, null);
+        $result = $output->display_path($path, 'html');
+
+        $this->assertStringContainsString('tests/fixtures/error_and_warning.php</span>', $result);
+        $this->assertStringContainsString('<b>2</b>: Empty line found after PHP open tag (warning)', $result);
+        $this->assertStringContainsString('<b>11</b>: Class <b>someclass</b> is not documented (error)', $result);
+        $this->assertStringContainsString('<b>12</b>: Function <b>someclass::somefunc</b> is not documented (warning)', $result);
     }
 }

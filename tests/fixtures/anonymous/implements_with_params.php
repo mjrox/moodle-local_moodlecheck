@@ -15,17 +15,14 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details.
+ * Unit tests for a fixture file in moodlecheck.
  *
- * @package    local_moodlecheck
- * @copyright  2012 Marina Glancy
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   local_moodlecheck
+ * @copyright 2023 onwards Eloy Lafuente (stronk7) {@link https://stronk7.com}
+ * @license   https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die;
+defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2023071400;
-$plugin->release   = '1.1.6';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->requires = 2018051700;
-$plugin->component = 'local_moodlecheck';
+return new class (10, $units, new something(), $end) implements someinterface {
+};
